@@ -55,10 +55,61 @@ def status_report(name, robot_type, hp, max_hp, battery):
 # ---------------------------------------------------------------------------
 # Q2 战斗日志分析（题面 Q2·多源日志解析与统计）
 # ---------------------------------------------------------------------------
+def _parse_line(line):
+    line = line.strip()                              # 去空格
+    if not line or line.startswith("#"):             # 空行 / 注释 → 脏行
+        return []
+    if line.startswith("{"):
+        try:
+            d = json.loads(line)                     # 解析失败 → 脏行
+        except Exception:
+            return []
+        if not isinstance(d, dict):
+            return []        # 不是字典 → 脏行
+        armor, damage = d.get("armor"), d.get("damage")
+        if armor not in ("front", "left", "right"):
+            return []   # 部位非法
+        if type(damage) is not int or damage <= 0:
+            return []  # 伤害非正整数
+        return [(armor, damage, d.get("id"))]
+    result = []
+    for part in line.split(","):                     # 按逗号拆
+        if ":" not in part:
+            return []                # 没冒号 → 脏行
+        letter, _, val = part.partition(":")         # 拆成字母和数值
+        letter, val = letter.strip(), val.strip()
+        if letter not in ("F", "L", "R"):
+            return []    # 字母非法
+        try:
+            num = int(val)
+        except ValueError:
+            return []                 # 数值转不了 int
+        if num <= 0:
+            return []                       # 非正整数
+        name = {"F": "front", "L": "left", "R": "right"}[letter]
+        result.append((name, num, None))             # 传感器行没有 id
+    return result   # id 没有就是 None
+
+
 def analyze_damage_log(lines):
-    """TODO(Q2)：解析混合格式伤害日志，返回固定契约的统计 dict；
-    行格式、去重与统计口径见题面 Q2 规范。"""
-    raise NotImplementedError("Q2 analyze_damage_log：题面 Q2·多源日志解析与统计")
+    by_armor = {"front": 0, "left": 0, "right": 0}
+    total, count = 0, 0
+    seen_ids = set()
+
+    for line in lines:
+        for armor, damage, eid in _parse_line(line):   # 一行可能多个事件
+            if eid is not None:                        # 有 id 就去重
+                if eid in seen_ids:
+                    continue
+                seen_ids.add(eid)
+            by_armor[armor] += damage
+            total += damage
+            count += 1
+
+    most_hit = max(by_armor, key=by_armor.get) if count else None
+    avg = round(total / count, 2) if count else 0.0
+    return {"total": total, "by_armor": by_armor,
+            "most_hit": most_hit, "avg": avg}
 
 
 # ---------------------------------------------------------------------------
