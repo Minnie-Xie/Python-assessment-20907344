@@ -229,9 +229,36 @@ class SentryGrid:
 # Q4 贪心导航（题面 Q4·单步贪心导航策略）
 # ---------------------------------------------------------------------------
 def next_step_toward(pos, target, obstacles, current_facing=Facing.UP):
-    """TODO(Q4)：返回下一步应朝向的 Facing；
-    候选判定、优先级与回退规则见题面 Q4 规范。"""
-    raise NotImplementedError("Q4 next_step_toward：题面 Q4·贪心策略与回退")
+    """返回下一步应朝向的 Facing。"""
+    now = abs(pos[0] - target[0]) + abs(pos[1] - target[1])
+
+    candidates = []
+    for f in Facing:
+        nxt = (pos[0] + f.delta[0], pos[1] + f.delta[1])
+        if nxt in obstacles:
+            continue
+        dist = abs(nxt[0] - target[0]) + abs(nxt[1] - target[1])
+        if dist < now:
+            candidates.append(f)
+
+    if not candidates:
+        return current_facing
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    dx = abs(pos[0] - target[0])
+    dy = abs(pos[1] - target[1])
+    if dx > dy:
+        for f in (Facing.RIGHT, Facing.LEFT):
+            if f in candidates:
+                return f
+    else:
+        for f in (Facing.UP, Facing.DOWN):
+            if f in candidates:
+                return f
+
+    return candidates[0]
 
 
 # ---------------------------------------------------------------------------
