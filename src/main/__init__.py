@@ -275,9 +275,54 @@ class SentryState(Enum):
 
 
 def decide(sensor, state, hp, heat):
-    """TODO(Q5)：纯函数决策，返回 (action: str, new_state: SentryState)；
-    sensor 字段契约、R1-R7 规则表与非法输入处理见题面 Q5 规范。"""
-    raise NotImplementedError("Q5 decide：题面 Q5·决策规则表 R1-R7")
+    """纯函数决策：按 R1-R7 顺序求值，首条命中即返回。"""
+    for key in ("enemy_frames", "enemy_dist", "robot_type", "max_hp"):
+        if key not in sensor:
+            raise ValueError("sensor 缺少字段: {}".format(key))
+    frames = sensor["enemy_frames"]
+    if not isinstance(frames, (tuple, list)) or not 1 <= len(frames) <= 6:
+        raise ValueError("enemy_frames 长度须为 1-6")
+    if not isinstance(state, SentryState):
+        raise ValueError("state 必须是 SentryState 成员")
+
+    # 防御式规范化（字段存在但取值非法 → 不抛异常）
+    visible = bool(frames[-1])
+    dist = sensor["enemy_dist"]
+    if not isinstance(dist, int):
+        dist = None
+    rtype = "HERO" if sensor["robot_type"] == "HERO" else "INFANTRY"
+    try:
+        pct = hp / sensor["max_hp"] * 100
+    except (TypeError, ZeroDivisionError):
+        pct = 0
+    hp_pct = int(max(0, min(100, pct)))
+
+    def engage_action():
+        if dist is not None and dist <= 3:
+            return ("SHOOT", SentryState.ENGAGE)
+        if rtype == "HERO":
+            return ("MOVE_RIGHT", SentryState.ENGAGE)
+        return ("MOVE_LEFT", SentryState.ENGAGE)
+
+    if hp_pct <= 30:                                   # R1 保命优先
+        return ("RETREAT", SentryState.RETREAT)
+    if state == SentryState.RETREAT:                   # R2 撤退保持
+        return ("RETURN", SentryState.RETURN)
+    if state == SentryState.RETURN:                    # R3 返航单帧
+        return ("MOVE_BASE", SentryState.PATROL)
+    if state == SentryState.ENGAGE and visible:        # R4 交火决策
+        return engage_action()
+    if state == SentryState.ENGAGE:                    # R5 交火保持
+        if len(frames) >= 2 and not frames[-2]:
+            return ("SCAN", SentryState.SUSPECT)       # 持续丢失
+        return ("HOLD_FIRE", SentryState.ENGAGE)       # 短暂丢失
+    if visible:                                        # R6 敌情确认
+        if len(frames) >= 2 and frames[-2]:
+            return engage_action()
+        return ("SCAN", SentryState.SUSPECT)
+    if state == SentryState.PATROL:                    # R7 默认行为
+        return ("PATROL_MOVE", SentryState.PATROL)
+    return ("SCAN", SentryState.SUSPECT)
 
 
 # ---------------------------------------------------------------------------
