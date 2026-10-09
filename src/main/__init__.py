@@ -329,14 +329,96 @@ def decide(sensor, state, hp, heat):
 # Q6 巡逻任务（题面 Q6·巡逻契约与验收阈值）
 # ---------------------------------------------------------------------------
 def run_patrol(grid, max_steps=500):
-    """TODO(Q6)：sense → decide → act 主循环；
-    循环结构、终止条件、脱困自由度与统计返回契约见题面 Q6 规范。"""
-    raise NotImplementedError("Q6 run_patrol：题面 Q6·主循环与统计契约")
+    """sense → decide → act 主循环：贪心导航 + 沿墙脱困。"""
+    enemy = grid.enemy_pos
+    left_of = {Facing.UP: Facing.LEFT, Facing.LEFT: Facing.DOWN,
+               Facing.DOWN: Facing.RIGHT, Facing.RIGHT: Facing.UP}
+    right_of = {v: k for k, v in left_of.items()}
+    rights = {Facing.UP: 0, Facing.RIGHT: 1,
+              Facing.DOWN: 2, Facing.LEFT: 3}
+
+    def manhattan(p):
+        return abs(p[0] - enemy[0]) + abs(p[1] - enemy[1])
+
+    def has_candidate():
+        pos = grid.current_pos
+        d0 = manhattan(pos)
+        for f in Facing:
+            nxt = (pos[0] + f.delta[0], pos[1] + f.delta[1])
+            if not grid.is_blocked(nxt[0], nxt[1]) and manhattan(nxt) < d0:
+                return True
+        return False
+
+    def align(desired):
+        diff = (rights[desired] - rights[grid.facing]) % 4
+        if diff == 3:
+            grid.turn_left()
+        else:
+            for _ in range(diff):
+                grid.turn_right()
+
+    visited = {grid.current_pos}
+    steps = 0
+    wall = False            # 是否处于沿墙脱困模式
+    hand = "L"              # 脱困用手别（L 左手 / R 右手）
+    wall_steps = 0
+    entry = 0               # 进入脱困时的距离
+    limit = grid.width + grid.height
+
+    while steps < max_steps and grid.fuel > 0 and not grid.found_enemy:
+        pos = grid.current_pos
+        if not wall and not has_candidate():
+            wall, hand, wall_steps = True, "L", 0
+            entry = manhattan(pos)
+        if wall:
+            side = (left_of[grid.facing] if hand == "L"
+                    else right_of[grid.facing])
+            other = (right_of[grid.facing] if hand == "L"
+                     else left_of[grid.facing])
+            sc = (pos[0] + side.delta[0], pos[1] + side.delta[1])
+            oc = (pos[0] + other.delta[0], pos[1] + other.delta[1])
+            fc = (pos[0] + grid.facing.delta[0],
+                  pos[1] + grid.facing.delta[1])
+            if not grid.is_blocked(sc[0], sc[1]):
+                if hand == "L":
+                    grid.turn_left()
+                else:
+                    grid.turn_right()
+            elif grid.is_blocked(fc[0], fc[1]):
+                if not grid.is_blocked(oc[0], oc[1]):
+                    if hand == "L":
+                        grid.turn_right()
+                    else:
+                        grid.turn_left()
+                else:
+                    grid.turn_right()
+                    grid.turn_right()
+            # 前方开着就走直线，无需转向
+        else:
+            align(next_step_toward(pos, enemy, grid.obstacles, grid.facing))
+        grid.move_forward()
+        steps += 1
+        visited.add(grid.current_pos)
+        if wall:
+            wall_steps += 1
+            if wall_steps > limit and hand == "L":
+                hand = "R"                      # 绕圈超时 → 换手
+                wall_steps = 0
+            elif wall_steps > 2 * limit:
+                wall = False                    # 强制退出脱困重评估
+            elif (has_candidate()
+                    and manhattan(grid.current_pos) < entry + 1):
+                wall = False                    # 距离回到脱困前水平 → 回贪心
+
+    return {"steps": steps, "collisions": grid.collision_count,
+            "visited_count": len(visited),
+            "found_enemy": grid.found_enemy,
+            "success": grid.found_enemy}
 
 
 def report_to_json(stats):
-    """TODO(Q6)：把 stats 序列化为确定性的 JSON 字符串，见题面 Q6 规范。"""
-    raise NotImplementedError("Q6 report_to_json：题面 Q6·报告序列化")
+    """把 stats 序列化为确定性 JSON 字符串。"""
+    return json.dumps(stats, sort_keys=True)
 
 
 # ---------------------------------------------------------------------------
